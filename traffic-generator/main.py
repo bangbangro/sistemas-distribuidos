@@ -52,10 +52,12 @@ while True:
     if res:
       
         tipo = "HIT"
+        print(f"TRAFFIC: {key} -> HIT (Caché)")
 
     else:
 
         tipo = "MISS"
+        print(f"TRAFFIC: {key} -> MISS (Enviando a cola)")
 
         request = {
 
