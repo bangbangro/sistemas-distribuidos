@@ -26,3 +26,10 @@ services:
     depends_on:
       - redis
       - response-generator
+      
+  metrics:
+    build: ./metrics
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - redis
