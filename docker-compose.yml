@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  # Servicio de cache redis
+  redis:
+    image: redis:latest
+    command: ["redis-server", "--maxmemory 50mb", "--maxmemory-policy allkeys-lru"]
+    ports:
+      - "6379:6379"
+
+  # Generador de respuestas
+  response-generator:
+    build: ./response-generator
+    environment:
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./response-generator:/app
+    depends_on:
+      - redis
+
+  # Generador de trafico
+  traffic-generator:
+    build: ./traffic-generator
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - redis
+      - response-generator
