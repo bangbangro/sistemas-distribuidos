@@ -120,6 +120,8 @@ while True:
     query = request["query"]
     conf = request["confidence"]
 
+    print(f"DEBUG: Procesando {query} para {zona} (Conf: {conf})")
+
     key = f"{query}:{zona}:conf={conf}"
 
     data = filtrar_zona(zona, conf)
@@ -157,6 +159,7 @@ while True:
         json.dumps(result),
         ex=60
     )
+    print(f"DEBUG: Resultado guardado en caché para {key}")
 
 
       
