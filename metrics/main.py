@@ -36,7 +36,7 @@ while True:
 
         total = hits + misses
 
-        if total % 50 == 0:
+        if total % 10 == 0:
 
             p50 = np.percentile(
                 latencias,
