@@ -37,20 +37,20 @@ Este proyecto implementa un sistema distribuido que incorpora mecanismos de cach
 Compilar cada módulo por separado:
 
 
-1. Ejecutar el proceso completo:
+1. **Ejecutar el proceso completo:**
    
 ```bash
 docker compose down
 docker compose up --build
 ```
 
-2. En una terminal secundaria, monitorear las métricas de rendimiento::
+2. **En una terminal secundaria, monitorear las métricas de rendimiento:**
 
 ```bash
 docker compose logs -f metrics
 ```
 
-3. En otra terminal, ver las evicciones en Redis
+3. **En otra terminal, ver las evicciones en Redis:**
 
 ```bash
 docker exec -it redis_cache redis-cli info stats | grep evicted_keys
@@ -67,7 +67,7 @@ Esto define si las consultas son en zipf o uniforme
 
 - En la variable MODO_TRAFICO="..."
 
-Se puede poner:
+Puede ser:
 
 "uniforme": equitativa para todas las zonas.
 
@@ -101,6 +101,7 @@ ex=5: TTL de corto plazo (evaluación de frescura).
 
 ex=3600: TTL de largo plazo (maximización de Hit Rate).
 
+---
 
 
 
