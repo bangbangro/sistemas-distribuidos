@@ -59,7 +59,7 @@ docker exec -it redis_cache redis-cli info stats | grep evicted_keys
 ##  Casos
 Para evaluar el comportamiento del sistema bajo distintas condiciones, se deben modificar los siguientes parámetros en los archivos de configuración:
 
-1. Cambiar el Modo de Tráfico
+1. **Cambiar el Modo de Tráfico**
    
 Esto define si las consultas son en zipf o uniforme
    
@@ -73,7 +73,7 @@ Se puede poner:
 
 "zipf": sesgada hacia las zonas "populares"
 
-2. Parámetros de Redis (Tamaño y Política)
+2. **Parámetros de Redis (Tamaño y Política)**
 
 Define el tamaño de memoria y el algoritmo de reemplazo de datos.
 
@@ -87,7 +87,7 @@ Modificaciones:
 
 --maxmemory-policy [allkeys-lru / allkeys-lfu / allkeys-random]: Cambia el algoritmo de reemplazo. 
 
-3. Ajuste de TTL (Time To Live)
+3. **Ajuste de TTL (Time To Live)**
 
 Define la persistencia temporal de los datos antes de expirar.
 
