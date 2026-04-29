@@ -30,6 +30,7 @@ Este proyecto implementa un sistema distribuido que incorpora mecanismos de cach
 - `traffic-generator` → Simula el comportamiento de usuarios pidiendo información.  
 - `response-generator` → Realiza los calculos.
 - `metrics` → Registra los hits, miss, latencia, throughput y tasa de evicción.
+- `datasets` → Contiene la información sobre la ubicación, tamaño y nivel de confianza de edificaciones, en la Región Metropolitana de Santiago de Chile.
 ---
 ##  Compilación
 
