@@ -48,14 +48,59 @@ docker compose up --build
 
 ```bash
 docker compose logs -f metrics
-./usuarios
 ```
 
 3. En otra terminal, ver las evicciones en Redis
 
 ```bash
 docker exec -it redis_cache redis-cli info stats | grep evicted_keys
-./reportar
 ```
 ---
+##  Casos
+Para evaluar el comportamiento del sistema bajo distintas condiciones, se deben modificar los siguientes parámetros en los archivos de configuración:
+
+1. Cambiar el Modo de Tráfico
+   
+Esto define si las consultas son en zipf o uniforme
+   
+- En traffic-generator/main.py
+
+- En la variable MODO_TRAFICO="..."
+
+Se puede poner:
+
+"uniforme": equitativa para todas las zonas.
+
+"zipf": sesgada hacia las zonas "populares"
+
+2. Parámetros de Redis (Tamaño y Política)
+
+Define el tamaño de memoria y el algoritmo de reemplazo de datos.
+
+- En docker-compose.yml
+
+- En la sección services -> redis -> command
+
+Modificaciones:
+
+--maxmemory [5mb / 50mb / 200mb]: Limita la RAM disponible.
+
+--maxmemory-policy [allkeys-lru / allkeys-lfu / allkeys-random]: Cambia el algoritmo de reemplazo. 
+
+3. Ajuste de TTL (Time To Live)
+
+Define la persistencia temporal de los datos antes de expirar.
+
+- En response-generator/main.py
+
+- En la línea r.set(key, value, ex=...)
+
+Configuraciones probadas:
+
+ex=5: TTL de corto plazo (evaluación de frescura).
+
+ex=3600: TTL de largo plazo (maximización de Hit Rate).
+
+
+
 
