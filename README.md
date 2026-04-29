@@ -13,8 +13,8 @@ Este proyecto implementa un sistema distribuido que incorpora mecanismos de cach
   
 2. **Sistema de cache y colas (Redis/docker-compose.yml)**  
    - Conecta los sistemas
-   - Cumple dos funciones: - Guarda los resultados calculados sobre reglas estrictas (tamaño memoria y politica)
-                           - Sistema de mensajería 
+   - Cumple dos funciones:    - Guarda los resultados calculados sobre reglas estrictas (tamaño memoria y politica)
+                              - Sistema de mensajería 
 
 3. **Generador de respuestas**  
    - Cuando le llega el 'Miss' del generador de trafico, calcula los resultados
