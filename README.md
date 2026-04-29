@@ -30,3 +30,31 @@ Este proyecto implementa un sistema distribuido que incorpora mecanismos de cach
 - `traffic-generator` → Simula el comportamiento de usuarios pidiendo información.  
 - `response-generator` → Realiza los calculos.
 - `metrics` → Registra los hits, miss, latencia, throughput y tasa de evicción.
+---
+##  Compilación
+
+Compilar cada módulo por separado:
+
+
+1. Ejecutar el proceso completo:
+   
+```bash
+docker compose down
+docker compose up --build
+```
+
+2. En una terminal secundaria, monitorear las métricas de rendimiento::
+
+```bash
+docker compose logs -f metrics
+./usuarios
+```
+
+3. En otra terminal, ver las evicciones en Redis
+
+```bash
+docker exec -it redis_cache redis-cli info stats | grep evicted_keys
+./reportar
+```
+---
+
