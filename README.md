@@ -125,7 +125,7 @@ ex=3600: TTL de largo plazo (maximización de Hit Rate).
 4. Si se repite la consulta antes de que expire el TTL o sea removida por la política (LRU/LFU):
 
 ```bash
-  TRAFFIC: density:Z1:conf=0.6 -> HIT (Recuperado de Redis)
+  TRAFFIC: density:Z1:conf=0.6 -> HIT 
 ```
 
 
