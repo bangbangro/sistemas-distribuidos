@@ -83,9 +83,9 @@ Define el tamaño de memoria y el algoritmo de reemplazo de datos.
 
 Modificaciones:
 
---maxmemory [5mb / 50mb / 200mb]: Limita la RAM disponible.
+--maxmemory [50mb / 200mb / 500mb]: Limita la RAM disponible.
 
---maxmemory-policy [allkeys-lru / allkeys-lfu / allkeys-random]: Cambia el algoritmo de reemplazo. 
+--maxmemory-policy [allkeys-lru / allkeys-lfu]: Cambia el algoritmo de reemplazo. 
 
 3. **Ajuste de TTL (Time To Live)**
 
@@ -102,6 +102,32 @@ ex=5: TTL de corto plazo (evaluación de frescura).
 ex=3600: TTL de largo plazo (maximización de Hit Rate).
 
 ---
+
+##  Ejemplo de flujo
+
+1. El traffic-generator solicita la densidad de edificios en la Zona 1 con confianza 0.6:
+```bash
+   TRAFFIC: density:Z1:conf=0.6 -> MISS (Enviado a cola)
+```
+
+2. El Response-generator calcula el área sobre el CSV al no encontrar el dato en Redis:
+
+```bash
+   [MISS] Calculando densidad para Z1... Resultado guardado en Redis con TTL.
+```
+
+3. El Metrics actualiza las estadísticas:
+
+```bash
+  Hits=1622 Misses=3528 HitRate=0.31 p50= 0.0011s p95=0.1805s throughput=9,70/s
+```
+
+4. Si se repite la consulta antes de que expire el TTL o sea removida por la política (LRU/LFU):
+
+```bash
+  TRAFFIC: density:Z1:conf=0.6 -> HIT (Recuperado de Redis)
+```
+
 
 
 
