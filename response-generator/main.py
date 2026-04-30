@@ -2,21 +2,17 @@ import redis
 import pandas as pd
 import json
 import numpy as np
+import time
 
-print("Cargando dataset...")
+print("Cargando dataset en memoria...")
+columnas = ['latitude', 'longitude', 'confidence', 'area_in_meters']
+tipos = {'latitude': 'float32', 'longitude': 'float32', 'confidence': 'float32', 'area_in_meters>
 
-df = pd.read_csv("small_buildings.csv")
+df = pd.read_csv("/data/967_buildings.csv.gz", usecols=columnas, dtype=tipos, compression='gzip')
+print(f"Dataset cargado. Filas: {len(df)}")
 
-print("Dataset cargado")
-
-r = redis.Redis(
-    host='redis',
-    port=6379,
-    decode_responses=True
-)
-
+r = redis.Redis(host='redis', port=6379, decode_responses=True)
 zonas_bbox = {
-
     "Z1": (-33.445, -33.420, -70.640, -70.600),
     "Z2": (-33.420, -33.390, -70.600, -70.550),
     "Z3": (-33.530, -33.490, -70.790, -70.740),
@@ -24,142 +20,85 @@ zonas_bbox = {
     "Z5": (-33.470, -33.430, -70.810, -70.760),
 }
 
-zonas_area_km2 = {
+zonas_area_km2 = {"Z1": 1.5, "Z2": 2.0, "Z3": 3.2, "Z4": 1.2, "Z5": 2.8}
 
-    "Z1": 1.5,
-    "Z2": 2.0,
-    "Z3": 3.2,
-    "Z4": 1.2,
-    "Z5": 2.8
-}
-
-
-def filtrar_zona(zona, conf):
-
-    lat_min, lat_max, lon_min, lon_max = zonas_bbox[zona]
-
-    data = df[
-        (df['latitude'] >= lat_min) &
-        (df['latitude'] <= lat_max) &
-        (df['longitude'] >= lon_min) &
-        (df['longitude'] <= lon_max) &
-        (df['confidence'] >= conf)
+def filtrar_zona(zona_id, conf_min):
+    lat_min, lat_max, lon_min, lon_max = zonas_bbox[zona_id]
+    return df[
+        (df['latitude'] >= lat_min) & (df['latitude'] <= lat_max) &
+        (df['longitude'] >= lon_min) & (df['longitude'] <= lon_max) &
+        (df['confidence'] >= conf_min)
     ]
 
-    return data
-def Q1(data):
-
-    return len(data)
-
-
-def Q2(data):
-
-    return {
-
-        "avg_area": float(data['area_in_meters'].mean()),
-        "total_area": float(data['area_in_meters'].sum()),
-        "n": len(data)
-    }
-  
-def Q3(zona, data):
-
-    count = len(data)
-
-    return count / zonas_area_km2[zona]
-
-def Q4(zonaA, zonaB, conf):
-
-    dataA = filtrar_zona(zonaA, conf)
-  
-  
-    dataB = filtrar_zona(zonaB, conf)
-
-    dA = Q3(zonaA, dataA)
-
-    dB = Q3(zonaB, dataB)
-
-    return {
-
-        "zoneA": dA,
-        "zoneB": dB,
-        "winner": zonaA if dA > dB else zonaB
-    }
-
-def Q5(data):
-
-    hist, edges = np.histogram(
-        data['confidence'],
-        bins=5,
-        range=(0,1)
-    )
-
-    result = []
-
-    for i in range(5):
-      
-        result.append({
-
-            "bucket": i,
-            "min": float(edges[i]),
-            "max": float(edges[i+1]),
-            "count": int(hist[i])
-        })
-
-    return result
-
-
-print("Esperando consultas...")
+print("Response Generator listo y esperando...")
 
 while True:
+    _, dato = r.brpop("cola_consultas")
+    request = json.loads(dato)
 
-    dato = r.brpop("cola_consultas")
-
-    request = json.loads(dato[1])
-
-    zona = request["zona"]
     query = request["query"]
+    zona = request["zona"]
     conf = request["confidence"]
+    start_time = time.time()
 
-    print(f"DEBUG: Procesando {query} para {zona} (Conf: {conf})")
-
-    key = f"{query}:{zona}:conf={conf}"
+    if query == "Q4":
+        zona_b = request["zona_b"]
+        key = f"compare:density:{zona}:{zona_b}:conf={conf}"
+    elif query == "Q5":
+        key = f"confidence_dist:{zona}:bins=5"
+    else:
+        prefijos = {"Q1": "count", "Q2": "area", "Q3": "density"}
+        key = f"{prefijos[query]}:{zona}:conf={conf}"
 
     data = filtrar_zona(zona, conf)
 
     if query == "Q1":
-
-        result = Q1(data)
-
+        result = len(data)
     elif query == "Q2":
-
-        result = Q2(data)
-
+        result = {
+            "avg_area": float(data['area_in_meters'].mean()) if not data.empty else 0,
+            "total_area": float(data['area_in_meters'].sum()),
+            "n": len(data)
+        }
     elif query == "Q3":
-
-        result = Q3(zona, data)
-
+        result = len(data) / zonas_area_km2[zona]
     elif query == "Q4":
-
-        zonaB = np.random.choice(
-            ["Z1","Z2","Z3","Z4","Z5"]
-        )
-
-        result = Q4(zona, zonaB, conf)
-
+        data_b = filtrar_zona(zona_b, conf)
+        densidad_a = len(data) / zonas_area_km2[zona]
+        densidad_b = len(data_b) / zonas_area_km2[zona_b]
+        result = {
+            "zone_a": densidad_a,
+            "zone_b": densidad_b,
+            "winner": zona if densidad_a > densidad_b else zona_b
+        }
     elif query == "Q5":
+        hist, edges = np.histogram(data['confidence'], bins=5, range=(0,1))
+        result = [{"bucket": i, "min": float(edges[i]), "max": float(edges[i+1]), "count": int(hist[i])} for i in range(5)]
 
-        result = Q5(data)
-      
-    else:
+    r.set(key, json.dumps(result), ex=300)
 
-        result = "Query no válida"
+    latencia = time.time() - start_time
+    r.lpush("metricas_cola", f"MISS,{latencia}")
 
-    r.set(
-        key,
-        json.dumps(result),
-        ex=60
-    )
-    print(f"DEBUG: Resultado guardado en caché para {key}")
+    print(f"Procesado MISS: {key} en {latencia:.4f}s")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
       
