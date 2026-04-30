@@ -32,6 +32,29 @@ Este proyecto implementa un sistema distribuido que incorpora mecanismos de cach
 - `metrics` → Registra los hits, miss, latencia, throughput y tasa de evicción.
 - `datasets` → Contiene la información sobre la ubicación, tamaño y nivel de confianza de edificaciones, en la Región Metropolitana de Santiago de Chile.
 ---
+## Configuración previa 
+
+Antes de ejecutar la tarea, es necesario descargar y ubicar el dataset de pruebas, ya que por su tamaño no se incluye en el repositorio.
+
+1.- Crea una carpeta llamada data` en la raíz del proyecto.
+2.- Descarga el archivo del dataset y colócalo dentro de esa carpeta.
+
+La estructura de tus archivo deberia verse asi antes de continuar:
+
+```text
+sistemas-distribuidos/
+├── docker-compose.yml
+├── data/
+│   └── [AQUÍ VA EL ARCHIVO DE DATASET]
+├── response-generator
+├── traffic-generator
+└── metrics
+
+
+
+
+
+---
 ##  Compilación
 
 Compilar cada módulo por separado:
