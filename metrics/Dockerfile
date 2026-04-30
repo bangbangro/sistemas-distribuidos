@@ -6,4 +6,7 @@ COPY . .
 
 RUN pip install redis requests numpy
 
+RUN pip install redis numpy
+
 CMD ["python", "main.py"]
+
