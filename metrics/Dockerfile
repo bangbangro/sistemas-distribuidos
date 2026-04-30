@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY . .
 
-RUN pip install redis requests numpy
+RUN pip install redis requests
 
 RUN pip install redis numpy
 
