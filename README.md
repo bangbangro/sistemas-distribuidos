@@ -37,6 +37,7 @@ Este proyecto implementa un sistema distribuido que incorpora mecanismos de cach
 Antes de ejecutar la tarea, es necesario descargar y ubicar el dataset de pruebas, ya que por su tamaño no se incluye en el repositorio.
 
 1.- Crea una carpeta llamada data` en la raíz del proyecto.
+
 2.- Descarga el archivo del dataset y colócalo dentro de esa carpeta.
 
 La estructura de tus archivo deberia verse asi antes de continuar:
@@ -149,7 +150,3 @@ ex=3600: TTL de largo plazo (maximización de Hit Rate).
   TRAFFIC: density:Z1:conf=0.6 -> HIT 
 ```
 
-
-
-
-hggjhhgh
