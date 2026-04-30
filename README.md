@@ -49,12 +49,8 @@ sistemas-distribuidos/
 ├── response-generator
 ├── traffic-generator
 └── metrics
-
-
-
-
-
 ---
+
 ##  Compilación
 
 Compilar cada módulo por separado:
