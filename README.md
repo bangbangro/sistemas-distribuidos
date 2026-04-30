@@ -49,6 +49,8 @@ sistemas-distribuidos/
 ├── response-generator
 ├── traffic-generator
 └── metrics
+```
+
 ---
 
 ##  Compilación
