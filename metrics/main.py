@@ -24,13 +24,14 @@ while True:
     if dato:
 
         tipo, lat = dato.split(",")
-      
+
         lat = float(lat)
 
         latencias.append(lat)
 
         if tipo == "HIT":
-            hits += 1
+
+  hits += 1
         else:
             misses += 1
 
@@ -47,8 +48,7 @@ while True:
                 latencias,
                 95
             )
-
-            tiempo = time.time() - start_time
+tiempo = time.time() - start_time
 
             throughput = total / tiempo
 
