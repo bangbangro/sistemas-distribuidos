@@ -6,6 +6,7 @@ COPY . .
 ENV PYTHONUNBUFFERED=1
 
 RUN pip install --upgrade pip
-RUN pip install redis pandas numpy
+RUN pip install redis pandas numpy kafka-python
 
 CMD ["python", "main.py"]
+

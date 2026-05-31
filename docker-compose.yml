@@ -1,6 +1,7 @@
 version: '3.8'
 
 services:
+  # Redis: Configurado con límite de 200MB y política LRU para tu experimento actual
   redis:
     image: redis:latest
     container_name: redis_cache
@@ -10,8 +11,29 @@ services:
     deploy:
       resources:
         limits:
-          memory: 100M 
+          memory: 100M # Límite del contenedor un poco mayor al de Redis para evitar crashes
 
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+
+  # Generador de Respuestas: El "cerebro" que procesa los MISS
   response-generator:
     build: ./response-generator
     container_name: response_generator
@@ -20,12 +42,14 @@ services:
     volumes:
       - ./data:/data # Asegúrate de tener tu CSV en la carpeta local ./data
 
+  # Generador de Tráfico: El que simula a las empresas de logística
   traffic-generator:
     build: ./traffic-generator
     container_name: traffic_generator
     depends_on:
       - redis
 
+  # Monitor de Métricas: El que calcula Hit Rate, Latencia y Throughput
   metrics:
     build: ./metrics
     container_name: metrics_monitor
