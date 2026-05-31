@@ -4,7 +4,7 @@ services:
   redis:
     image: redis:latest
     container_name: redis_cache
-    command: ["redis-server", "--maxmemory", "50mb", "--maxmemory-policy", "allkeys-lfu"]
+    command: ["redis-server", "--maxmemory", "2mb", "--maxmemory-policy", "allkeys-lfu"]
     ports:
       - "6379:6379"
     deploy:
