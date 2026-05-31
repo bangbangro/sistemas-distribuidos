@@ -6,12 +6,13 @@ import time
 
 print("Cargando dataset en memoria...")
 columnas = ['latitude', 'longitude', 'confidence', 'area_in_meters']
-tipos = {'latitude': 'float32', 'longitude': 'float32', 'confidence': 'float32', 'area_in_meters>
+tipos = {'latitude': 'float32', 'longitude': 'float32', 'confidence': 'float32', 'area_in_meters': 'float32'}
 
 df = pd.read_csv("/data/967_buildings.csv.gz", usecols=columnas, dtype=tipos, compression='gzip')
 print(f"Dataset cargado. Filas: {len(df)}")
 
 r = redis.Redis(host='redis', port=6379, decode_responses=True)
+
 zonas_bbox = {
     "Z1": (-33.445, -33.420, -70.640, -70.600),
     "Z2": (-33.420, -33.390, -70.600, -70.550),
@@ -74,21 +75,18 @@ while True:
     elif query == "Q5":
         hist, edges = np.histogram(data['confidence'], bins=5, range=(0,1))
         result = [{"bucket": i, "min": float(edges[i]), "max": float(edges[i+1]), "count": int(hist[i])} for i in range(5)]
+        
+    payload = {
+        "result": result,
+        "padding": "X" * 20000
+    }
 
-    r.set(key, json.dumps(result), ex=300)
+    r.set(key, json.dumps(payload), ex=300)
 
     latencia = time.time() - start_time
     r.lpush("metricas_cola", f"MISS,{latencia}")
 
     print(f"Procesado MISS: {key} en {latencia:.4f}s")
-
-
-
-
-
-
-
-
 
 
 
