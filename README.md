@@ -1,26 +1,47 @@
-#  Tarea 1 - Sistemas distribuidos 
+#  Tarea 2 - Sistemas distribuidos 
 
-Este proyecto implementa un sistema distribuido que incorpora mecanismos de cache para optimizar las consultas de datos  
+Este proyecto se evoluciona la Tarea 1 incorporando Apache Kafka como sistema de mensajería, agregando tolerancia a fallos mediante reintentos automáticos, Dead Letter Queue (DLQ) y escalamiento horizontal con múltiples consumidores. 
 
 ---
 
 ##  Estructura del sistema
 
 1. **Generador de trafico**  
-   - Genera consultas aleatorias dependiendo si es Zipf o Uniforme
-   - Si la respuesta existe, anota un 'Hit'
-   - Si no existe anota un 'Miss' y procesara la consulta en el generador de respuestas en 'cola_consultas'
-  
-2. **Sistema de cache y colas (Redis/docker-compose.yml)**  
-   - Conecta los sistemas
-   - Cumple dos funciones: Guarda los resultados calculados sobre reglas estrictas (tamaño de la memoria y politica) y es un sistema de mensajería 
+  - Genera consultas aleatorias en modo Zipf o Uniforme
+  - Consulta Redis primero: si hay HIT responde de inmediato
+  - Si hay MISS, publica la consulta en el tópico Kafka consultas
+  - Soporta modo spike para simular ráfagas de tráfico
+    
+2. **Kafka Producer**
+  - Recibe las consultas del generador de tráfico
+  - Administra tres tópicos: consultas, consultas_retry y consultas_dlq
+  - Desacopla el generador de tráfico del procesamiento
 
-3. **Generador de respuestas**  
+3. **Consumers Kafka**
+  - Consumen mensajes desde consultas y consultas_retry
+  - Consultan Redis: si hay HIT retornan inmediatamente
+  - Si hay MISS, procesan la consulta y guardan el resultado en Redis
+  - En caso de falla, reenvían la consulta a consultas_retry
+  - Escalables horizontalmente (1, 2, 3 o más réplicas)
+
+4. **Dead Letter Queue (DLQ)**
+  - Las consultas que superan el máximo de reintentos se envían al tópico consultas_dlq
+  - Permite auditoría de consultas no resueltas sin pérdida de información
+
+5. **Generador de respuestas**  
    - Cuando le llega el 'Miss' del generador de trafico, calcula los resultados
    - Guarda el resultado en el cache 
    
-4. **Almacenamiento de metricas**
-   - Se registran metricas del sistema
+6. **Sistema Cache**
+   - Almacena resultados calculados con TTL de 5 minutos
+   - Política de remoción: allkeys-lfu
+   - Tamaño máximo: 2MB
+   - Actúa como canal de control para simular fallos y spikes
+
+7. **Sistema de Métricas**
+  - Registra throughput, latencia (p50, p95), HitRate, reintentos, DLQ, drops y backlog
+  - Imprime resumen cada 10 consultas procesadas
+  - Muestra eventos de RETRY y DLQ en tiempo real
 
 ---
 
@@ -56,97 +77,81 @@ sistemas-distribuidos/
 
 ##  Compilación
 
-Compilar cada módulo por separado:
-
-
-1. **Ejecutar el proceso completo:**
-   
-```bash
+# Levantar todo el sistema
 docker compose down
 docker compose up --build
-```
 
-2. **En una terminal secundaria, monitorear las métricas de rendimiento:**
-
-```bash
+# Ver métricas en tiempo real
 docker compose logs -f metrics
-```
 
-3. **En otra terminal, ver las evicciones en Redis:**
+# Ver logs de los consumers
+docker compose logs -f consumer
 
-```bash
-docker exec -it redis_cache redis-cli info stats | grep evicted_keys
-```
----
-##  Casos
-Para evaluar el comportamiento del sistema bajo distintas condiciones, se deben modificar los siguientes parámetros en los archivos de configuración:
-
-1. **Cambiar el Modo de Tráfico**
-   
-Esto define si las consultas son en zipf o uniforme
-   
-- En traffic-generator/main.py
-
-- En la variable MODO_TRAFICO="..."
-
-Puede ser:
-
-"uniforme": equitativa para todas las zonas.
-
-"zipf": sesgada hacia las zonas "populares"
-
-2. **Parámetros de Redis (Tamaño y Política)**
-
-Define el tamaño de memoria y el algoritmo de reemplazo de datos.
-
-- En docker-compose.yml
-
-- En la sección services -> redis -> command
-
-Modificaciones:
-
---maxmemory [50mb / 200mb / 500mb]: Limita la RAM disponible.
-
---maxmemory-policy [allkeys-lru / allkeys-lfu]: Cambia el algoritmo de reemplazo. 
-
-3. **Ajuste de TTL (Time To Live)**
-
-Define la persistencia temporal de los datos antes de expirar.
-
-- En response-generator/main.py
-
-- En la línea r.set(key, value, ex=...)
-
-Configuraciones probadas:
-
-ex=5: TTL de corto plazo (evaluación de frescura).
-
-ex=3600: TTL de largo plazo (maximización de Hit Rate).
+# Ver logs del generador de tráfico
+docker compose logs -f traffic-generator
 
 ---
 
-##  Ejemplo de flujo
+##  Escenarios Evalución
+**Escenario 1 — Sistema Base (Tarea 1, sin Kafka)**
+bashgit checkout tarea1
+docker compose up --build
+docker compose logs -f traffic-generator
 
-1. El traffic-generator solicita la densidad de edificios en la Zona 1 con confianza 0.6:
-```bash
-   TRAFFIC: density:Z1:conf=0.6 -> MISS (Enviado a cola)
-```
+**Escenario 2 — Kafka + 1 Consumer**
+En docker-compose.yml, asegurarse que consumer tenga replicas: 1, luego:
+bashdocker compose up --build
+docker compose logs -f metrics
 
-2. El Response-generator calcula el área sobre el CSV al no encontrar el dato en Redis:
+**Escenario 3 — Kafka + Múltiples Consumers**
+bash# Escalar a 3 consumers
+docker compose up --scale consumer=3 -d
 
-```bash
-   [MISS] Calculando densidad para Z1... Resultado guardado en Redis con TTL.
-```
+# Verificar los 3 consumers activos
+docker compose ps | grep consumer
 
-3. El Metrics actualiza las estadísticas:
+# Verificar balanceo en Kafka (debe decir "with 3 members")
+docker compose logs kafka | grep "Stabilized group"
 
-```bash
-  Hits=1622 Misses=3528 HitRate=0.31 p50= 0.0011s p95=0.1805s throughput=9,70/s
-```
+**Escenario 4 — Falla Temporal del Generador de Respuestas**
+bash# Simular caída
+docker exec redis_cache redis-cli set generador_activo 0
 
-4. Si se repite la consulta antes de que expire el TTL o sea removida por la política (LRU/LFU):
+# Observar reintentos y DLQ en los logs
+docker compose logs -f consumer
 
-```bash
-  TRAFFIC: density:Z1:conf=0.6 -> HIT 
-```
+# Restaurar el generador
+docker exec redis_cache redis-cli set generador_activo 1
 
+**Escenario 5 — Reintentos Automáticos**
+El consumer tiene un 20% de probabilidad de fallo aleatorio activo por defecto. No requiere configuración adicional. Observar en los logs:
+bashdocker compose logs -f consumer
+# Error procesando ...: Fallo temporal simulado
+# Reintento 1/3 → ...
+# MISS CACHE → ... ← resuelto exitosamente en reintento
+
+**Escenario 6 — Spike de Tráfico**
+bash# Activar spike (10x más consultas)
+docker exec redis_cache redis-cli set traffic_mode spike
+
+# Observar backlog y throughput en métricas
+docker compose logs -f metrics
+
+# Volver a modo normal
+docker exec redis_cache redis-cli set traffic_mode normal
+
+**Escenario 7 — Recuperación ante Fallos**
+bash# 1. Limpiar estado
+docker exec redis_cache redis-cli flushall
+
+# 2. Simular caída
+docker exec redis_cache redis-cli set generador_activo 0
+
+# 3. Esperar ~30 segundos (las consultas van a retry/DLQ pero NO se pierden)
+docker compose logs -f metrics
+
+# 4. Recuperar
+docker exec redis_cache redis-cli set generador_activo 1
+
+# 5. Observar que el sistema retoma el procesamiento normal
+docker compose logs -f consumer
