@@ -86,21 +86,21 @@ sistemas-distribuidos/
 
 ##  Compilación
 
-Levantar todo el sistema
 ```bash
+#Levantar todo el sistema
 docker compose down
 docker compose up --build
-```
-Ver métricas en tiempo real
-```bash
+
+#Ver métricas en tiempo real
+
 docker compose logs -f metrics
-```
-Ver logs de los consumers
-```bash
+
+#Ver logs de los consumers
+
 docker compose logs -f consumer
-```
-Ver logs del generador de tráfico
-```bash
+
+#Ver logs del generador de tráfico
+
 docker compose logs -f traffic-generator
 ```
 ---
