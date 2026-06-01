@@ -1,6 +1,6 @@
 #  Tarea 2 - Sistemas distribuidos 
 
-Este proyecto se evoluciona la Tarea 1 incorporando Apache Kafka como sistema de mensajería, agregando tolerancia a fallos mediante reintentos automáticos, Dead Letter Queue (DLQ) y escalamiento horizontal con múltiples consumidores. 
+Este proyecto es la evolucion la Tarea 1 incorporando Apache Kafka como sistema de mensajería, agregando tolerancia a fallos mediante reintentos automáticos, Dead Letter Queue (DLQ) y escalamiento horizontal con múltiples consumidores. 
 
 ---
 
@@ -28,9 +28,10 @@ Este proyecto se evoluciona la Tarea 1 incorporando Apache Kafka como sistema de
   - Las consultas que superan el máximo de reintentos se envían al tópico consultas_dlq
   - Permite auditoría de consultas no resueltas sin pérdida de información
 
-5. **Generador de respuestas**  
-   - Cuando le llega el 'Miss' del generador de trafico, calcula los resultados
-   - Guarda el resultado en el cache 
+5. **Sistema de Reintentos**
+  - Cada consulta fallida se reencola automáticamente
+  - Máximo 3 reintentos por consulta
+  - Cada mensaje incluye: ID único, contador de reintentos y timestamp de creación
    
 6. **Sistema Cache**
    - Almacena resultados calculados con TTL de 5 minutos
@@ -46,13 +47,21 @@ Este proyecto se evoluciona la Tarea 1 incorporando Apache Kafka como sistema de
 ---
 
 ##  Archivos del proyecto
-
-- `docker-compose.yml` → Conecta los contenedores para que funcionen.  
-- `traffic-generator` → Simula el comportamiento de usuarios pidiendo información.  
-- `response-generator` → Realiza los calculos.
-- `metrics` → Registra los hits, miss, latencia, throughput y tasa de evicción.
-- `datasets` → Contiene la información sobre la ubicación, tamaño y nivel de confianza de edificaciones, en la Región Metropolitana de Santiago de Chile.
+```text
+sistemas-distribuidos/
+├── docker-compose.yml         → Orquesta todos los contenedores
+├── data/
+│   └── [DATASET CSV]          → Dataset Google Open Buildings (descargar aparte)
+├── traffic-generator/
+│   └── main.py                → Genera consultas y publica en Kafka
+├── response-generator/
+│   ├── main.py                → Generador de respuestas (Tarea 1)
+│   └── consumer.py            → Consumer Kafka con reintentos y DLQ
+└── metrics/
+    └── main.py                → Monitor de métricas en tiempo real
+```
 ---
+
 ## Configuración previa 
 
 Antes de ejecutar la tarea, es necesario descargar y ubicar el dataset de pruebas, ya que por su tamaño no se incluye en el repositorio.
@@ -68,9 +77,9 @@ sistemas-distribuidos/
 ├── docker-compose.yml
 ├── data/
 │   └── [AQUÍ VA EL ARCHIVO DE DATASET]
-├── response-generator
-├── traffic-generator
-└── metrics
+├── response-generator/
+├── traffic-generator/
+└── metrics/
 ```
 
 ---
@@ -78,82 +87,102 @@ sistemas-distribuidos/
 ##  Compilación
 
 Levantar todo el sistema
+```bash
 docker compose down
 docker compose up --build
-
+```
 Ver métricas en tiempo real
+```bash
 docker compose logs -f metrics
-
+```
 Ver logs de los consumers
+```bash
 docker compose logs -f consumer
-
+```
 Ver logs del generador de tráfico
+```bash
 docker compose logs -f traffic-generator
-
+```
 ---
 
 ##  Escenarios Evalución
-**Escenario 1 — Sistema Base (Tarea 1, sin Kafka)**
-bashgit checkout tarea1
+**Escenario 1 — Sistema Base**
+```bash
+git checkout tarea1
 docker compose up --build
 docker compose logs -f traffic-generator
-
+```
 **Escenario 2 — Kafka + 1 Consumer**
 En docker-compose.yml, asegurarse que consumer tenga replicas: 1, luego:
+```bash
 bashdocker compose up --build
 docker compose logs -f metrics
-
+```
 **Escenario 3 — Kafka + Múltiples Consumers**
-bash# Escalar a 3 consumers
+Escalar a 3 consumers
+```bash
 docker compose up --scale consumer=3 -d
-
+```
 Verificar los 3 consumers activos
+```bash
 docker compose ps | grep consumer
-
+```
 Verificar balanceo en Kafka (debe decir "with 3 members")
+```bash
 docker compose logs kafka | grep "Stabilized group"
-
-**Escenario 4 — Falla Temporal del Generador de Respuestas**
-bash# Simular caída
+```
+**Escenario 4 — Falla Temporal**
+Simular caída
+```bash
 docker exec redis_cache redis-cli set generador_activo 0
-
+```
 Observar reintentos y DLQ en los logs
+```bash
 docker compose logs -f consumer
-
+```
 Restaurar el generador
+```bash
 docker exec redis_cache redis-cli set generador_activo 1
-
-**Escenario 5 — Reintentos Automáticos**
+```
+**Escenario 5 — Reintentos**
 El consumer tiene un 20% de probabilidad de fallo aleatorio activo por defecto. No requiere configuración adicional. Observar en los logs:
+```bash
 bashdocker compose logs -f consumer
 Error procesando ...: Fallo temporal simulado
 Reintento 1/3 → ...
 MISS CACHE → ... ← resuelto exitosamente en reintento
-
+```
 **Escenario 6 — Spike de Tráfico**
-bash# Activar spike (10x más consultas)
+Activar spike (10x más consultas)
+```bash
 docker exec redis_cache redis-cli set traffic_mode spike
-
+```
 Observar backlog y throughput en métricas
+```bash
 docker compose logs -f metrics
-
+```
 Volver a modo normal
+```bash
 docker exec redis_cache redis-cli set traffic_mode normal
-
+```
 **Escenario 7 — Recuperación ante Fallos**
-bash´´
 1. Limpiar estado
+```bash
 docker exec redis_cache redis-cli flushall
-
+```
 2. Simular caída
+```bash
 docker exec redis_cache redis-cli set generador_activo 0
-
+```
 3. Esperar ~30 segundos (las consultas van a retry/DLQ pero NO se pierden)
+```bash
 docker compose logs -f metrics
-
+```
 4. Recuperar
+```bash
 docker exec redis_cache redis-cli set generador_activo 1
-
+```
 5. Observar que el sistema retoma el procesamiento normal
+```bash
 docker compose logs -f consumer
-´´´
+```
