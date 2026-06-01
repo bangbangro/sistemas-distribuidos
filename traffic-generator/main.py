@@ -18,13 +18,13 @@ r = redis.Redis(
 # KAFKA WAIT + CONNECT
 # ======================
 def wait_for_kafka(host='kafka', port=9092, timeout=120):
-    print("⏳ Esperando Kafka...")
+    print("Esperando Kafka...")
     start = time.time()
     while True:
         try:
             sock = socket.create_connection((host, port), timeout=3)
             sock.close()
-            print("✅ Puerto Kafka disponible, esperando inicialización...")
+            print("Puerto Kafka disponible, esperando inicialización...")
             time.sleep(3)
             return
         except (socket.error, ConnectionRefusedError):
@@ -42,7 +42,7 @@ while True:
             bootstrap_servers='kafka:9092',
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
-        print("✅ Kafka Producer conectado")
+        print("Kafka Producer conectado")
         break
     except Exception as e:
         print(f"   Producer falló: {e}, reintentando en 3s...")
@@ -114,7 +114,7 @@ def enviar_consulta():
 # LOOP PRINCIPAL
 # ======================
 MODO_TRAFICO = "uniforme"
-print(f"🚦 Generando tráfico en modo: {MODO_TRAFICO}...")
+print(f"Generando tráfico en modo: {MODO_TRAFICO}...")
 
 # Inicializar modo normal en Redis
 r.set("traffic_mode", "normal")
@@ -123,7 +123,7 @@ while True:
     delay, cantidad = get_delay()
 
     if cantidad > 1:
-        print(f"⚡ SPIKE ACTIVO — enviando {cantidad} consultas de golpe")
+        print(f"SPIKE ACTIVO — enviando {cantidad} consultas de golpe")
 
     for _ in range(cantidad):
         enviar_consulta()
