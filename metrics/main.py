@@ -19,7 +19,7 @@ latencias_misses = []
 start_time = time.time()
 ultimo_total = 0  # para detectar cambios de 10 en 10
 
-print("📊 Métricas esperando datos...")
+print("Métricas esperando datos...")
 
 while True:
     dato = r.rpop("metricas_cola")
@@ -49,7 +49,7 @@ while True:
 
         elif tipo == "DROP":
             drops += 1
-            print(f"🔴 DROP #{drops}")
+            print(f"DROP #{drops}")
 
         total = hits + misses
 
