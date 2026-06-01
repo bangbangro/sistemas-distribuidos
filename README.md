@@ -106,83 +106,73 @@ docker compose logs -f traffic-generator
 ---
 
 ##  Escenarios Evalución
-**Escenario 1 — Sistema Base**
+### Escenario 1 — Sistema Base
 ```bash
 git checkout tarea1
 docker compose up --build
 docker compose logs -f traffic-generator
 ```
-**Escenario 2 — Kafka + 1 Consumer**
+### Escenario 2 — Kafka + 1 Consumer
 En docker-compose.yml, asegurarse que consumer tenga replicas: 1, luego:
 ```bash
 bashdocker compose up --build
 docker compose logs -f metrics
 ```
-**Escenario 3 — Kafka + Múltiples Consumers**
-Escalar a 3 consumers
+### Escenario 3 — Kafka + Múltiples Consumers
 ```bash
+# Escalar a 3 consumers
 docker compose up --scale consumer=3 -d
-```
-Verificar los 3 consumers activos
-```bash
+ 
+# Verificar los 3 consumers activos
 docker compose ps | grep consumer
-```
-Verificar balanceo en Kafka (debe decir "with 3 members")
-```bash
+ 
+# Verificar balanceo en Kafka (debe decir "with 3 members")
 docker compose logs kafka | grep "Stabilized group"
 ```
-**Escenario 4 — Falla Temporal**
-Simular caída
+### Escenario 4 — Falla Temporal
 ```bash
+# Simular caída
 docker exec redis_cache redis-cli set generador_activo 0
+ 
+# Observar reintentos y DLQ en los logs
+docker compose logs -f consumer
+ 
+# Restaurar el generador
+docker exec redis_cache redis-cli set generador_activo 1
 ```
-Observar reintentos y DLQ en los logs
+#### Escenario 5 — Reintentos
 ```bash
 docker compose logs -f consumer
+# Error procesando ...: Fallo temporal simulado
+# Reintento 1/3 → ...
+# MISS CACHE → ... ← resuelto exitosamente en reintento
 ```
-Restaurar el generador
+### Escenario 6 — Spike de Tráfico
 ```bash
-docker exec redis_cache redis-cli set generador_activo 1
-```
-**Escenario 5 — Reintentos**
-El consumer tiene un 20% de probabilidad de fallo aleatorio activo por defecto. No requiere configuración adicional. Observar en los logs:
-```bash
-bashdocker compose logs -f consumer
-Error procesando ...: Fallo temporal simulado
-Reintento 1/3 → ...
-MISS CACHE → ... ← resuelto exitosamente en reintento
-```
-**Escenario 6 — Spike de Tráfico**
-Activar spike (10x más consultas)
-```bash
+# Activar spike (10x más consultas)
 docker exec redis_cache redis-cli set traffic_mode spike
-```
-Observar backlog y throughput en métricas
-```bash
+ 
+# Observar backlog y throughput en métricas
 docker compose logs -f metrics
-```
-Volver a modo normal
-```bash
+ 
+# Volver a modo normal
 docker exec redis_cache redis-cli set traffic_mode normal
 ```
-**Escenario 7 — Recuperación ante Fallos**
-1. Limpiar estado
+
+### Escenario 7 — Recuperación ante Fallos
 ```bash
+# 1. Limpiar estado
 docker exec redis_cache redis-cli flushall
-```
-2. Simular caída
-```bash
+ 
+# 2. Simular caída
 docker exec redis_cache redis-cli set generador_activo 0
-```
-3. Esperar ~30 segundos (las consultas van a retry/DLQ pero NO se pierden)
-```bash
+ 
+# 3. Esperar ~30 segundos (las consultas van a retry/DLQ pero NO se pierden)
 docker compose logs -f metrics
-```
-4. Recuperar
-```bash
+ 
+# 4. Recuperar
 docker exec redis_cache redis-cli set generador_activo 1
-```
-5. Observar que el sistema retoma el procesamiento normal
-```bash
+ 
+# 5. Observar que el sistema retoma el procesamiento normal
 docker compose logs -f consumer
 ```
