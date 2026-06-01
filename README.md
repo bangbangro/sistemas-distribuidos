@@ -34,10 +34,10 @@ Este proyecto es la evolucion la Tarea 1 incorporando Apache Kafka como sistema 
   - Cada mensaje incluye: ID único, contador de reintentos y timestamp de creación
    
 6. **Sistema Cache**
-   - Almacena resultados calculados con TTL de 5 minutos
-   - Política de remoción: allkeys-lfu
-   - Tamaño máximo: 2MB
-   - Actúa como canal de control para simular fallos y spikes
+  - Almacena resultados calculados con TTL de 5 minutos
+  - Política de remoción: allkeys-lfu
+  - Tamaño máximo: 2MB
+  - Actúa como canal de control para simular fallos y spikes
 
 7. **Sistema de Métricas**
   - Registra throughput, latencia (p50, p95), HitRate, reintentos, DLQ, drops y backlog
