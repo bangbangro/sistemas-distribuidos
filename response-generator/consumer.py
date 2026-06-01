@@ -11,7 +11,7 @@ MAX_REINTENTOS = 3
 # ======================
 # KAFKA WAIT + CONNECT
 # ======================
-print("⏳ Esperando Kafka...")
+print("Esperando Kafka...")
 while True:
     try:
         consumer = KafkaConsumer(
@@ -26,7 +26,7 @@ while True:
             bootstrap_servers='kafka:9092',
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
-        print("✅ Kafka conectado")
+        print("Kafka conectado")
         break
     except Exception as e:
         print("Kafka no listo aún:", e)
@@ -62,18 +62,18 @@ def procesar(request):
 def enviar_retry(request):
     request["reintentos"] = request.get("reintentos", 0) + 1
     producer.send('consultas_retry', request)
-    print(f"🔁 Reintento {request['reintentos']}/{MAX_REINTENTOS} → {build_key(request)}")
+    print(f"Reintento {request['reintentos']}/{MAX_REINTENTOS} → {build_key(request)}")
     r.lpush("metricas_cola", f"RETRY,{request['reintentos']}")
 
 def enviar_dlq(request):
     producer.send('consultas_dlq', request)
-    print(f"💀 DLQ → {build_key(request)} (falló {request.get('reintentos', 0)} veces)")
+    print(f"DLQ → {build_key(request)} (falló {request.get('reintentos', 0)} veces)")
     r.lpush("metricas_cola", f"DLQ,{request.get('reintentos', 0)}")
 
 # ======================
 # LOOP PRINCIPAL
 # ======================
-print("🔄 Escuchando mensajes...")
+print("Escuchando mensajes...")
 
 for msg in consumer:
     request = msg.value
@@ -91,7 +91,7 @@ for msg in consumer:
     if cached:
         latencia = time.time() - start
         r.lpush("metricas_cola", f"HIT,{latencia}")
-        print(f"✅ HIT CACHE → {key}")
+        print(f"HIT CACHE → {key}")
         continue
 
     # Cache miss: intentar procesar
@@ -100,10 +100,10 @@ for msg in consumer:
         r.set(key, resultado, ex=300)
         latencia = time.time() - start
         r.lpush("metricas_cola", f"MISS,{latencia}")
-        print(f"🔄 MISS CACHE → {key} | Procesado en {latencia:.4f}s")
+        print(f"MISS CACHE → {key} | Procesado en {latencia:.4f}s")
 
     except Exception as e:
-        print(f"⚠️  Error procesando {key}: {e}")
+        print(f"Error procesando {key}: {e}")
         if request["reintentos"] < MAX_REINTENTOS-1:
             enviar_retry(request)
         else:
