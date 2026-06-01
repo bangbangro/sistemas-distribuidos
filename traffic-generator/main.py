@@ -1,14 +1,56 @@
+from kafka import KafkaProducer
 import redis
 import random
 import time
 import json
+import socket
 
+# ======================
+# REDIS
+# ======================
 r = redis.Redis(
     host='redis',
     port=6379,
     decode_responses=True
 )
 
+# ======================
+# KAFKA WAIT + CONNECT
+# ======================
+def wait_for_kafka(host='kafka', port=9092, timeout=120):
+    print("⏳ Esperando Kafka...")
+    start = time.time()
+    while True:
+        try:
+            sock = socket.create_connection((host, port), timeout=3)
+            sock.close()
+            print("✅ Puerto Kafka disponible, esperando inicialización...")
+            time.sleep(3)
+            return
+        except (socket.error, ConnectionRefusedError):
+            if time.time() - start > timeout:
+                raise TimeoutError("Kafka no disponible tras 120s")
+            print(f"   Puerto no disponible aún, reintentando en 3s...")
+            time.sleep(3)
+
+wait_for_kafka()
+
+producer = None
+while True:
+    try:
+        producer = KafkaProducer(
+            bootstrap_servers='kafka:9092',
+            value_serializer=lambda v: json.dumps(v).encode('utf-8')
+        )
+        print("✅ Kafka Producer conectado")
+        break
+    except Exception as e:
+        print(f"   Producer falló: {e}, reintentando en 3s...")
+        time.sleep(3)
+
+# ======================
+# DATASET
+# ======================
 zonas = ["Z1", "Z2", "Z3", "Z4", "Z5"]
 
 def generar_consulta(modo="zipf"):
@@ -17,32 +59,38 @@ def generar_consulta(modo="zipf"):
     else:
         zona = random.choices(
             zonas,
-            weights=[70, 15, 7, 5, 3] # Sesgo hacia Z1
+            weights=[70, 15, 7, 5, 3]
         )[0]
-
     query = f"Q{random.randint(1,5)}"
     conf = random.choice([0.6, 0.7, 0.8, 0.9])
-
     payload = {
         "zona": zona,
         "query": query,
         "confidence": conf
     }
-
     if query == "Q4":
         zona_b = random.choice([z for z in zonas if z != zona])
         payload["zona_b"] = zona_b
-
     return payload
 
-MODO_TRAFICO = "uniforme"
-print(f"Generando tráfico en modo: {MODO_TRAFICO}...")
+# ======================
+# SPIKE CONTROL VIA REDIS
+# ======================
+def get_delay():
+    """
+    Lee el modo actual desde Redis.
+    normal: 1 consulta cada 100ms
+    spike:  10 consultas por iteración sin delay (ráfaga)
+    """
+    modo = r.get("traffic_mode")
+    if modo == "spike":
+        return 0, 10  # delay, cantidad de consultas por iteración
+    return 0.1, 1
 
-while True:
+def enviar_consulta():
     request = generar_consulta(MODO_TRAFICO)
-    
     q, z, c = request["query"], request["zona"], request["confidence"]
-    
+
     if q == "Q4":
         key = f"compare:density:{z}:{request['zona_b']}:conf={c}"
     elif q == "Q5":
@@ -59,7 +107,25 @@ while True:
         r.lpush("metricas_cola", f"HIT,{latencia}")
         print(f"TRAFFIC: {key} -> HIT")
     else:
-        r.lpush("cola_consultas", json.dumps(request))
-        print(f"TRAFFIC: {key} -> MISS (Enviado a cola)")
+        producer.send("consultas", request)
+        print(f"TRAFFIC: {key} -> MISS (Enviado a Kafka)")
 
-    time.sleep(0.1)
+# ======================
+# LOOP PRINCIPAL
+# ======================
+MODO_TRAFICO = "uniforme"
+print(f"🚦 Generando tráfico en modo: {MODO_TRAFICO}...")
+
+# Inicializar modo normal en Redis
+r.set("traffic_mode", "normal")
+
+while True:
+    delay, cantidad = get_delay()
+
+    if cantidad > 1:
+        print(f"⚡ SPIKE ACTIVO — enviando {cantidad} consultas de golpe")
+
+    for _ in range(cantidad):
+        enviar_consulta()
+
+    time.sleep(delay)

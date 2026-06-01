@@ -10,65 +10,77 @@ r = redis.Redis(
 
 hits = 0
 misses = 0
-
-
+retries = 0
+dlq = 0
+drops = 0
 latencias_generales = []
 latencias_hits = []
 latencias_misses = []
-
 start_time = time.time()
+ultimo_total = 0  # para detectar cambios de 10 en 10
 
-print("Métricas esperando datos...")
+print("📊 Métricas esperando datos...")
 
 while True:
     dato = r.rpop("metricas_cola")
-
     if dato:
-        tipo, lat = dato.split(",")
-        lat = float(lat)
-
-        latencias_generales.append(lat)
+        partes = dato.split(",")
+        tipo = partes[0]
 
         if tipo == "HIT":
+            lat = float(partes[1])
             hits += 1
             latencias_hits.append(lat)
-        else:
+            latencias_generales.append(lat)
+
+        elif tipo == "MISS":
+            lat = float(partes[1])
             misses += 1
             latencias_misses.append(lat)
+            latencias_generales.append(lat)
+
+        elif tipo == "RETRY":
+            retries += 1
+            print(f"⚡ RETRY #{retries} | Total DLQ={dlq}")
+
+        elif tipo == "DLQ":
+            dlq += 1
+            print(f"💀 DLQ #{dlq} | Total Retries={retries}")
+
+        elif tipo == "DROP":
+            drops += 1
+            print(f"🔴 DROP #{drops}")
 
         total = hits + misses
 
-
-        if total % 10 == 0:
-            # Métricas base
+        # Imprimir resumen cada 10 consultas procesadas
+        if total > 0 and total != ultimo_total and total % 10 == 0:
+            ultimo_total = total
             p50 = np.percentile(latencias_generales, 50)
             p95 = np.percentile(latencias_generales, 95)
-
             tiempo_segundos = time.time() - start_time
             tiempo_minutos = tiempo_segundos / 60
-
             throughput = total / tiempo_segundos
             hit_rate = hits / total
 
-
-            # Pedimos a Redis directamente cuántas llaves ha borrado
             info_redis = r.info('stats')
             evictions = info_redis.get('evicted_keys', 0)
             eviction_rate = evictions / tiempo_minutos if tiempo_minutos > 0 else 0
 
-
             t_cache = np.mean(latencias_hits) if latencias_hits else 0
             t_db = np.mean(latencias_misses) if latencias_misses else 0
-
             cache_efficiency = ((hits * t_cache) - (misses * t_db)) / total
 
+            backlog = r.llen("metricas_cola")
+
             print(
-                f"Hits={hits} "
-                f"Misses={misses} "
+                f"[{tiempo_segundos:.0f}s] "
+                f"Hits={hits} Misses={misses} "
                 f"HitRate={hit_rate:.2f} "
-                f"p50={p50:.4f}s "
-                f"p95={p95:.4f}s "
+                f"p50={p50:.4f}s p95={p95:.4f}s "
                 f"Throughput={throughput:.2f}/s | "
+                f"Retries={retries} DLQ={dlq} Drops={drops} "
+                f"Backlog={backlog} "
                 f"Evictions={evictions} (Rate={eviction_rate:.2f}/min) "
                 f"CacheEfficiency={cache_efficiency:.5f}s"
             )
