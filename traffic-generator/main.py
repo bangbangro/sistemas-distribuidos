@@ -1,12 +1,11 @@
-import redis
+from kafka import KafkaProducer
 import random
 import time
 import json
 
-r = redis.Redis(
-    host='redis',
-    port=6379,
-    decode_responses=True
+producer = KafkaProducer(
+    bootstrap_servers="kafka:9092",
+    value_serializer=lambda v: json.dumps(v).encode("utf-8")
 )
 
 zonas = ["Z1", "Z2", "Z3", "Z4", "Z5"]
@@ -17,7 +16,7 @@ def generar_consulta(modo="zipf"):
     else:
         zona = random.choices(
             zonas,
-            weights=[70, 15, 7, 5, 3] # Sesgo hacia Z1
+            weights=[70, 15, 7, 5, 3]
         )[0]
 
     query = f"Q{random.randint(1,5)}"
@@ -41,25 +40,8 @@ print(f"Generando tráfico en modo: {MODO_TRAFICO}...")
 while True:
     request = generar_consulta(MODO_TRAFICO)
     
-    q, z, c = request["query"], request["zona"], request["confidence"]
+    producer.send("topic_consultas_principales", request)
+    producer.flush()
     
-    if q == "Q4":
-        key = f"compare:density:{z}:{request['zona_b']}:conf={c}"
-    elif q == "Q5":
-        key = f"confidence_dist:{z}:bins=5"
-    else:
-        prefijos = {"Q1": "count", "Q2": "area", "Q3": "density"}
-        key = f"{prefijos[q]}:{z}:conf={c}"
-
-    start_time = time.time()
-    res = r.get(key)
-
-    if res:
-        latencia = time.time() - start_time
-        r.lpush("metricas_cola", f"HIT,{latencia}")
-        print(f"TRAFFIC: {key} -> HIT")
-    else:
-        r.lpush("cola_consultas", json.dumps(request))
-        print(f"TRAFFIC: {key} -> MISS (Enviado a cola)")
-
+    print(f"TRAFFIC: Enviado a Kafka -> {request['query']} en {request['zona']}")
     time.sleep(0.1)
