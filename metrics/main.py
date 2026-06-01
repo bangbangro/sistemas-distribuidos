@@ -41,11 +41,11 @@ while True:
 
         elif tipo == "RETRY":
             retries += 1
-            print(f"⚡ RETRY #{retries} | Total DLQ={dlq}")
+            print(f" RETRY #{retries} | Total DLQ={dlq}")
 
         elif tipo == "DLQ":
             dlq += 1
-            print(f"💀 DLQ #{dlq} | Total Retries={retries}")
+            print(f" DLQ #{dlq} | Total Retries={retries}")
 
         elif tipo == "DROP":
             drops += 1
