@@ -104,7 +104,7 @@ for msg in consumer:
 
     except Exception as e:
         print(f"Error procesando {key}: {e}")
-        if request["reintentos"] < MAX_REINTENTOS-1:
+        if request["reintentos"] < MAX_REINTENTOS:
             enviar_retry(request)
         else:
             enviar_dlq(request)
