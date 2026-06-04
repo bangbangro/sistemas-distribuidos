@@ -5,18 +5,12 @@ import time
 import json
 import socket
 
-# ======================
-# REDIS
-# ======================
 r = redis.Redis(
     host='redis',
     port=6379,
     decode_responses=True
 )
 
-# ======================
-# KAFKA WAIT + CONNECT
-# ======================
 def wait_for_kafka(host='kafka', port=9092, timeout=120):
     print("Esperando Kafka...")
     start = time.time()
@@ -48,9 +42,6 @@ while True:
         print(f"   Producer falló: {e}, reintentando en 3s...")
         time.sleep(3)
 
-# ======================
-# DATASET
-# ======================
 zonas = ["Z1", "Z2", "Z3", "Z4", "Z5"]
 
 def generar_consulta(modo="zipf"):
@@ -73,9 +64,7 @@ def generar_consulta(modo="zipf"):
         payload["zona_b"] = zona_b
     return payload
 
-# ======================
-# SPIKE CONTROL VIA REDIS
-# ======================
+# SPIKE 
 def get_delay():
     """
     Lee el modo actual desde Redis.
@@ -84,7 +73,7 @@ def get_delay():
     """
     modo = r.get("traffic_mode")
     if modo == "spike":
-        return 0, 10  # delay, cantidad de consultas por iteración
+        return 0, 10  
     return 0.1, 1
 
 def enviar_consulta():
@@ -110,13 +99,9 @@ def enviar_consulta():
         producer.send("consultas", request)
         print(f"TRAFFIC: {key} -> MISS (Enviado a Kafka)")
 
-# ======================
-# LOOP PRINCIPAL
-# ======================
 MODO_TRAFICO = "uniforme"
 print(f"Generando tráfico en modo: {MODO_TRAFICO}...")
 
-# Inicializar modo normal en Redis
 r.set("traffic_mode", "normal")
 
 while True:
