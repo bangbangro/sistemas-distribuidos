@@ -4,7 +4,6 @@ import json
 import numpy as np
 import time
 
-# --- CARGA OPTIMIZADA DEL DATASET ---
 print("Cargando dataset en memoria...")
 columnas = ['latitude', 'longitude', 'confidence', 'area_in_meters']
 tipos = {'latitude': 'float32', 'longitude': 'float32', 'confidence': 'float32', 'area_in_meters': 'float32'}
@@ -14,7 +13,6 @@ print(f"Dataset cargado. Filas: {len(df)}")
 
 r = redis.Redis(host='redis', port=6379, decode_responses=True)
 
-# Bounding boxes oficiales de la guía
 zonas_bbox = {
     "Z1": (-33.445, -33.420, -70.640, -70.600),
     "Z2": (-33.420, -33.390, -70.600, -70.550),
@@ -25,7 +23,6 @@ zonas_bbox = {
 
 zonas_area_km2 = {"Z1": 1.5, "Z2": 2.0, "Z3": 3.2, "Z4": 1.2, "Z5": 2.8}
 
-# --- FUNCIONES DE CÁLCULO ---
 def filtrar_zona(zona_id, conf_min):
     lat_min, lat_max, lon_min, lon_max = zonas_bbox[zona_id]
     return df[
@@ -37,7 +34,6 @@ def filtrar_zona(zona_id, conf_min):
 print("Response Generator listo y esperando...")
 
 while True:
-    # 1. Escuchar nuevas consultas (MISSES delegados)
     _, dato = r.brpop("cola_consultas")
     request = json.loads(dato)
 
@@ -46,7 +42,6 @@ while True:
     conf = request["confidence"]
     start_time = time.time()
 
-    # 2. Generar KEY según el estándar de la guía para guardar el resultado
     if query == "Q4":
         zona_b = request["zona_b"]
         key = f"compare:density:{zona}:{zona_b}:conf={conf}"
@@ -56,7 +51,6 @@ while True:
         prefijos = {"Q1": "count", "Q2": "area", "Q3": "density"}
         key = f"{prefijos[query]}:{zona}:conf={conf}"
 
-    # 3. Procesar la consulta específica
     data = filtrar_zona(zona, conf)
 
     if query == "Q1":
@@ -82,7 +76,7 @@ while True:
         hist, edges = np.histogram(data['confidence'], bins=5, range=(0,1))
         result = [{"bucket": i, "min": float(edges[i]), "max": float(edges[i+1]), "count": int(hist[i])} for i in range(5)]
 
-    # 4. Guardar en caché y notificar a métricas
+    # guardar en caché y notificar a métricas
     payload = {
         "result": result,
         "padding": "X" * 20000
