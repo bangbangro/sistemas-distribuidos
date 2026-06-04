@@ -8,9 +8,6 @@ r = redis.Redis(host='redis', port=6379, decode_responses=True)
 
 MAX_REINTENTOS = 3
 
-# ======================
-# KAFKA WAIT + CONNECT
-# ======================
 print("Esperando Kafka...")
 while True:
     try:
@@ -32,9 +29,6 @@ while True:
         print("Kafka no listo aún:", e)
         time.sleep(5)
 
-# ======================
-# HELPERS
-# ======================
 def build_key(request):
     q = request["query"]
     z = request["zona"]
@@ -70,9 +64,6 @@ def enviar_dlq(request):
     print(f"DLQ → {build_key(request)} (falló {request.get('reintentos', 0)} veces)")
     r.lpush("metricas_cola", f"DLQ,{request.get('reintentos', 0)}")
 
-# ======================
-# LOOP PRINCIPAL
-# ======================
 print("Escuchando mensajes...")
 
 for msg in consumer:
