@@ -17,7 +17,7 @@ latencias_generales = []
 latencias_hits = []
 latencias_misses = []
 start_time = time.time()
-ultimo_total = 0  # para detectar cambios de 10 en 10
+ultimo_total = 0 
 
 print("Métricas esperando datos...")
 
@@ -53,7 +53,7 @@ while True:
 
         total = hits + misses
 
-        # Imprimir resumen cada 10 consultas procesadas
+        # Se imprime resumen cada 10 consultas procesadas
         if total > 0 and total != ultimo_total and total % 10 == 0:
             ultimo_total = total
             p50 = np.percentile(latencias_generales, 50)
