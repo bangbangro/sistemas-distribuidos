@@ -100,8 +100,8 @@ def enviar_consulta(modo_trafico):
         prefijos = {"Q1": "count", "Q2": "area", "Q3": "density"}
         key = f"{prefijos[q]}:{z}:conf={c}"
 
-    # TODAS las consultas van a Kafka (los consumers se encargan del cache)
-    producer.send("consultas", request)
+    
+     producer.send("consultas", key=request["zona"].encode("utf-8"), value=request)
     print(f"TRAFFIC: {key} -> Kafka [id={request['query_id'][:8]}]")
 
 # ─── Modo de tráfico configurable ───
