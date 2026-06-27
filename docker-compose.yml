@@ -59,5 +59,7 @@ services:
     depends_on:
       - kafka
       - redis
+    volumes:
+      - ./data:/data
     deploy:
       replicas: 3

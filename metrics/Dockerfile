@@ -4,9 +4,8 @@ WORKDIR /app
 
 COPY . .
 
-RUN pip install redis requests
-
-RUN pip install redis numpy
+# Install required Python packages
+RUN pip install --no-cache-dir redis numpy kafka-python
 
 CMD ["python", "main.py"]
 
