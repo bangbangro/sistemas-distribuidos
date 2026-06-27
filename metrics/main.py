@@ -1,32 +1,43 @@
 """
-Sistema de Métricas - Tarea 2 & 3
-Consume eventos de métricas desde Kafka (metrics-topic) y Redis (metricas_cola).
-Calcula: throughput, p50/p95, retry rate, recovery rate, DLQ rate, 
-         backlog size, recovery time.
+Sistema de Métricas – Tarea 3
+Consume eventos de métricas desde Kafka (metrics‑topic) y publica
+resúmenes consolidados en Elasticsearch para visualización en Kibana.
 """
-from kafka import KafkaConsumer, KafkaAdminClient
-from kafka.admin import NewTopic
-from kafka.errors import TopicAlreadyExistsError
-import redis
-import time
-import json
+
+import os, json, time, warnings, socket
 import numpy as np
-import threading
-import socket
+import redis
 from datetime import datetime
+from kafka import KafkaConsumer
+import requests   # HTTP client for Elasticsearch
 
-# ─── Conexión Redis ───
-r = redis.Redis(host='redis', port=6379, decode_responses=True)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-# ─── Esperar Kafka ───
-def wait_for_kafka(host='kafka', port=9092, timeout=120):
-    print("[Metrics] Esperando Kafka...")
+# ----------------------------------------------------------------------
+# Configuración (variables de entorno)
+# ----------------------------------------------------------------------
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+METRICS_TOPIC = os.getenv("METRICS_TOPIC", "metrics-topic")
+ES_HOST = os.getenv("ELASTICSEARCH_HOST", "elasticsearch")
+ES_PORT = os.getenv("ELASTICSEARCH_PORT", "9200")
+ES_INDEX = "system-metrics"
+
+# ----------------------------------------------------------------------
+# Conexión Redis (legacy backlog)
+# ----------------------------------------------------------------------
+r = redis.Redis(host="redis", port=6379, decode_responses=True)
+
+# ----------------------------------------------------------------------
+# Esperar Kafka (misma lógica que antes)
+# ----------------------------------------------------------------------
+def wait_for_kafka(host="kafka", port=9092, timeout=120):
+    print("[Metrics] Esperando Kafka…")
     start = time.time()
     while True:
         try:
             sock = socket.create_connection((host, port), timeout=3)
             sock.close()
-            print("[Metrics] Kafka disponible, esperando inicialización...")
+            print("[Metrics] Kafka disponible – esperando inicialización…")
             time.sleep(5)
             return
         except (socket.error, ConnectionRefusedError):
@@ -36,208 +47,174 @@ def wait_for_kafka(host='kafka', port=9092, timeout=120):
 
 wait_for_kafka()
 
-# ─── Kafka Consumer para métricas ───
-kafka_consumer = None
+# ----------------------------------------------------------------------
+# Consumidor Kafka
+# ----------------------------------------------------------------------
 while True:
     try:
-        kafka_consumer = KafkaConsumer(
-            'metrics-topic',
-            bootstrap_servers='kafka:9092',
-            value_deserializer=lambda m: json.loads(m.decode('utf-8')),
-            group_id='metrics-monitor',
-            auto_offset_reset='earliest',
-            consumer_timeout_ms=500  # Non-blocking: timeout after 500ms
+        consumer = KafkaConsumer(
+            METRICS_TOPIC,
+            bootstrap_servers=KAFKA_BOOTSTRAP,
+            value_deserializer=lambda m: json.loads(m.decode("utf-8")),
+            group_id="metrics-monitor",
+            auto_offset_reset="earliest",
+            consumer_timeout_ms=500,
         )
-        print("[Metrics] Kafka Consumer conectado a metrics-topic")
+        print("[Metrics] Consumer conectado a", METRICS_TOPIC)
         break
     except Exception as e:
-        print(f"[Metrics] Kafka no listo aún: {e}")
+        print("[Metrics] Kafka no listo aún:", e)
         time.sleep(5)
 
-# ─── Estado de métricas ───
-hits = 0
-misses = 0
-retries_total = 0
-dlq_total = 0
-recovered_total = 0  # Consultas recuperadas tras reintento exitoso
-total_exitosas = 0
+# ----------------------------------------------------------------------
+# Variables de métricas
+# ----------------------------------------------------------------------
+hits = misses = retries_total = dlq_total = recovered_total = 0
+total_success = 0
+latencias = []
+lat_hits = []
+lat_misses = []
 
-latencias_generales = []
-latencias_hits = []
-latencias_misses = []
-
-# Recovery time tracking
-falla_detectada_time = None  # Timestamp cuando se detecta primera falla
-recovery_time_last = None     # Último recovery time calculado
-en_falla = False              # Flag: estamos en período de fallas
+# Recovery‑time tracking
+en_falla = False
+falla_ts = None
+recovery_time = None
 
 # Consumer tracking
-consumer_counts = {}  # consumer_id -> consultas procesadas
+consumer_counts = {}
 
-# Ventana de tiempo para throughput
-ventana_inicio = time.time()
-consultas_ventana = 0
-
+# Throughput ventana (5 s)
+INTERVAL = 5
+ventana_start = time.time()
+ventana_q = 0
 start_time = time.time()
-ultimo_reporte = 0
+last_report = 0
 
-# ─── Hilo para leer métricas legacy de Redis ───
-def leer_redis_metricas():
-    """Lee métricas del formato antiguo en Redis (backward compatibility)."""
-    global hits, misses, retries_total, dlq_total, latencias_generales
-    global latencias_hits, latencias_misses
-
-    while True:
-        try:
-            dato = r.rpop("metricas_cola")
-            if dato:
-                partes = dato.split(",")
-                tipo = partes[0]
-                if tipo == "HIT":
-                    lat = float(partes[1])
-                    # No duplicar si ya viene de Kafka
-                elif tipo == "MISS":
-                    lat = float(partes[1])
-                elif tipo == "RETRY":
-                    pass
-                elif tipo == "DLQ":
-                    pass
-                elif tipo == "DROP":
-                    pass
-            else:
-                time.sleep(0.1)
-        except Exception as e:
-            time.sleep(0.5)
-
-# Iniciar hilo Redis (solo para drenar la cola legacy)
-redis_thread = threading.Thread(target=leer_redis_metricas, daemon=True)
-redis_thread.start()
-
-# ─── Obtener backlog de Kafka ───
-def get_kafka_backlog():
-    """Calcula el backlog estimado del tópico principal de consultas."""
+# ----------------------------------------------------------------------
+# Helper: publicar en Elasticsearch
+# ----------------------------------------------------------------------
+def publish_es(doc):
+    url = f"http://{ES_HOST}:{ES_PORT}/{ES_INDEX}/_doc"
     try:
-        backlog = r.llen("metricas_cola")
-        return backlog
-    except Exception:
-        return -1
+        resp = requests.post(url, json=doc, timeout=5)
+        if resp.status_code not in (200, 201):
+            print("[Metrics][ES] Error", resp.status_code, resp.text)
+    except Exception as exc:
+        print("[Metrics][ES] Exception", exc)
 
-# ─── Loop principal: consumir desde Kafka metrics-topic ───
-print("[Metrics] Esperando eventos de métricas...")
-print("=" * 100)
-
-INTERVALO_REPORTE = 5  # Reportar cada 5 segundos
-
+# ----------------------------------------------------------------------
+# Loop principal
+# ----------------------------------------------------------------------
+print("[Metrics] Esperando eventos…")
 while True:
     try:
-        # Leer mensajes de Kafka (non-blocking con timeout)
-        mensajes = kafka_consumer.poll(timeout_ms=1000)
+        msgs = consumer.poll(timeout_ms=1000)
+        for _, batch in msgs.items():
+            for msg in batch:
+                ev = msg.value
+                qtype = ev.get("query_type")
+                cache_hit = ev.get("cache_hit", False)
+                latency = ev.get("latency_ms", 0) / 1000.0
+                status = ev.get("status", "success")
+                consumer_id = ev.get("consumer_id", "unknown")
+                retries = ev.get("retries", 0)
+                recovered = ev.get("recovered", False)
 
-        for tp, messages in mensajes.items():
-            for msg in messages:
-                event = msg.value
-
-                query_type = event.get("query_type", "?")
-                cache_hit = event.get("cache_hit", False)
-                latency_ms = event.get("latency_ms", 0)
-                status = event.get("status", "success")
-                consumer_id = event.get("consumer_id", "unknown")
-                retries_count = event.get("retries", 0)
-                recovered = event.get("recovered", False)
-                latency_s = latency_ms / 1000.0
-
-                # Contadores
                 if status == "success":
-                    total_exitosas += 1
-                    consultas_ventana += 1
-                    latencias_generales.append(latency_s)
-
+                    total_success += 1
+                    ventana_q += 1
+                    latencias.append(latency)
                     if cache_hit:
                         hits += 1
-                        latencias_hits.append(latency_s)
+                        lat_hits.append(latency)
                     else:
                         misses += 1
-                        latencias_misses.append(latency_s)
-
+                        lat_misses.append(latency)
                     if recovered:
                         recovered_total += 1
-
-                    # Tracking de consumers
                     consumer_counts[consumer_id] = consumer_counts.get(consumer_id, 0) + 1
-
-                    # Recovery time: si estábamos en falla y ahora hay éxito
-                    if en_falla and falla_detectada_time is not None:
-                        recovery_time_last = time.time() - falla_detectada_time
+                    if en_falla and falla_ts is not None:
+                        recovery_time = time.time() - falla_ts
                         en_falla = False
-                        print(f"\n  ✅ RECUPERACIÓN DETECTADA | Recovery Time: {recovery_time_last:.2f}s")
-
+                        print(f"\n✅ RECUPERACIÓN DETECTADA – Recovery Time: {recovery_time:.2f}s")
                 elif status == "retry":
                     retries_total += 1
-                    # Detectar inicio de falla
                     if not en_falla:
                         en_falla = True
-                        falla_detectada_time = time.time()
-                        print(f"\n  ⚠️ FALLA DETECTADA | Inicio: {datetime.now().strftime('%H:%M:%S')}")
-
+                        falla_ts = time.time()
+                        print(f"\n⚠️ FALLA DETECTADA – {datetime.now().strftime('%H:%M:%S')}")
                 elif status == "dlq":
                     dlq_total += 1
 
-        # ─── Reporte periódico ───
-        ahora = time.time()
-        if ahora - ultimo_reporte >= INTERVALO_REPORTE:
-            ultimo_reporte = ahora
-            elapsed = ahora - start_time
+        # ------------------------------------------------------------------
+        # Reporte periódico
+        # ------------------------------------------------------------------
+        now = time.time()
+        if now - last_report >= INTERVAL:
+            last_report = now
+            elapsed = now - start_time
             total = hits + misses
-
             if total > 0:
-                p50 = np.percentile(latencias_generales, 50) if latencias_generales else 0
-                p95 = np.percentile(latencias_generales, 95) if latencias_generales else 0
-                throughput = total_exitosas / elapsed if elapsed > 0 else 0
-                hit_rate = hits / total if total > 0 else 0
-
-                # Retry rate: proporción de consultas que necesitaron reintento
-                total_procesadas = total + retries_total + dlq_total
-                retry_rate = retries_total / total_procesadas if total_procesadas > 0 else 0
-
-                # Recovery rate: consultas recuperadas / total retries
+                p50 = np.percentile(latencias, 50) * 1000 if latencias else 0
+                p95 = np.percentile(latencias, 95) * 1000 if latencias else 0
+                throughput = total_success / elapsed if elapsed > 0 else 0
+                ventana_thr = ventana_q / INTERVAL
+                hit_rate = hits / total
+                total_processed = total + retries_total + dlq_total
+                retry_rate = retries_total / total_processed if total_processed > 0 else 0
                 recovery_rate = recovered_total / retries_total if retries_total > 0 else 0
-
-                # DLQ rate
-                dlq_rate = dlq_total / total_procesadas if total_procesadas > 0 else 0
-
-                # Backlog Redis
+                dlq_rate = dlq_total / total_processed if total_processed > 0 else 0
                 backlog = r.llen("metricas_cola")
-
-                # Info Redis (evictions)
-                info_redis = r.info('stats')
-                evictions = info_redis.get('evicted_keys', 0)
-
-                # Throughput ventana (últimos N segundos)
-                throughput_ventana = consultas_ventana / INTERVALO_REPORTE
+                evicts = r.info("stats").get("evicted_keys", 0)
 
                 print(
-                    f"\n{'─' * 100}\n"
-                    f"[{elapsed:.0f}s] MÉTRICAS DEL SISTEMA\n"
-                    f"{'─' * 100}\n"
-                    f"  Procesamiento:  Hits={hits}  Misses={misses}  Total={total}\n"
+                    f"\n{'─'*100}\n"
+                    f"[{int(elapsed)}s] MÉTRICAS DEL SISTEMA\n"
+                    f"{'─'*100}\n"
+                    f"  Procesamiento: Hits={hits} Misses={misses} Total={total}\n"
                     f"  Hit Rate:       {hit_rate:.2%}\n"
-                    f"  Latencia:       p50={p50*1000:.2f}ms  p95={p95*1000:.2f}ms\n"
-                    f"  Throughput:     {throughput:.2f} q/s (promedio) | {throughput_ventana:.2f} q/s (ventana)\n"
+                    f"  Latencia:       p50={p50:.2f}ms  p95={p95:.2f}ms\n"
+                    f"  Throughput:     {throughput:.2f} q/s (prom) | {ventana_thr:.2f} q/s (ventana)\n"
                     f"  Reintentos:     Total={retries_total}  Retry Rate={retry_rate:.2%}\n"
-                    f"  Recuperación:   Recovered={recovered_total}  Recovery Rate={recovery_rate:.2%}"
-                    + (f"  Recovery Time={recovery_time_last:.2f}s" if recovery_time_last else "") +
-                    f"\n  DLQ:            Total={dlq_total}  DLQ Rate={dlq_rate:.2%}\n"
+                    f"  Recuperación:   Recovered={recovered_total}  Recovery Rate={recovery_rate:.2%}" 
+                    + (f"  Recovery Time={recovery_time:.2f}s" if recovery_time else "") + f"\n"
+                    f"  DLQ:            Total={dlq_total}  DLQ Rate={dlq_rate:.2%}\n"
                     f"  Backlog Redis:  {backlog}\n"
-                    f"  Evictions:      {evictions}\n"
-                    f"  Consumers:      {dict(consumer_counts)}\n"
-                    f"{'─' * 100}"
+                    f"  Evictions:      {evicts}\n"
+                    f"  Consumers:      {consumer_counts}\n"
+                    f"{'─'*100}"
                 )
 
-                # Reset ventana
-                consultas_ventana = 0
-            else:
-                print(f"[{elapsed:.0f}s] Esperando eventos... (backlog Redis: {r.llen('metricas_cola')})")
+                doc = {
+                    "@timestamp": datetime.utcnow().isoformat() + "Z",
+                    "elapsed_seconds": int(elapsed),
+                    "hits": hits,
+                    "misses": misses,
+                    "total": total,
+                    "hit_rate": hit_rate,
+                    "latency_p50_ms": p50,
+                    "latency_p95_ms": p95,
+                    "throughput_overall_qps": throughput,
+                    "throughput_window_qps": ventana_thr,
+                    "retries_total": retries_total,
+                    "retry_rate": retry_rate,
+                    "recovered_total": recovered_total,
+                    "recovery_rate": recovery_rate,
+                    "recovery_time_sec": recovery_time if recovery_time else None,
+                    "dlq_total": dlq_total,
+                    "dlq_rate": dlq_rate,
+                    "backlog_redis": backlog,
+                    "evictions_redis": evicts,
+                    "consumer_counts": consumer_counts,
+                }
+                publish_es(doc)
 
-    except Exception as e:
-        print(f"[Metrics] Error: {e}")
+                # Reset ventana
+                ventana_q = 0
+                consumer_counts = {}
+            else:
+                print(f"[{int(elapsed)}s] Esperando eventos… (backlog Redis: {r.llen('metricas_cola')})")
+    except Exception as err:
+        print("[Metrics] Error:", err)
         time.sleep(1)
+
