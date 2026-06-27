@@ -15,7 +15,7 @@ Esta entrega extiende la Tarea 2 incorporando un pipeline de procesamiento strea
    - Tópico `consultas`: consultas nuevas
    - Tópico `consultas_retry`: consultas con fallo, en reintento
    - Tópico `consultas_dlq`: consultas que superaron el máximo de reintentos
-   - Tópico `metrics-topic`: eventos de métricas por consulta procesada ← **nuevo**
+   - Tópico `metrics-topic`: eventos de métricas por consulta procesada 
 
 3. **Consumers Kafka** (escalables horizontalmente)
    - Consumen desde `consultas` y `consultas_retry`
@@ -35,18 +35,18 @@ Esta entrega extiende la Tarea 2 incorporando un pipeline de procesamiento strea
    - Calcula y publica en Elasticsearch: throughput, latencia p50/p95, hit rate, retry rate, DLQ rate, backlog
    - Imprime resumen en consola cada 5 segundos
 
-6. **Apache Spark Structured Streaming** ← **nuevo**
+6. **Apache Spark Structured Streaming** 
    - Job PySpark que lee continuamente desde `metrics-topic`
    - Aplica ventanas deslizantes (1 min de ventana, slide de 30 s, watermark de 2 min)
    - Calcula por ventana: throughput, latencia p50/p95, hit rate, retry rate, recovery rate, DLQ count
    - Escribe resultados agregados en el índice `metrics-aggregated` de Elasticsearch
 
-7. **Elasticsearch** ← **nuevo**
+7. **Elasticsearch** 
    - Almacena documentos del sistema de métricas en `system-metrics`
    - Almacena agregaciones de Spark en `metrics-aggregated`
    - Single-node, sin seguridad (modo demo)
 
-8. **Kibana** ← **nuevo**
+8. **Kibana**
    - Dashboard interactivo con visualizaciones en tiempo real
    - Se conecta a Elasticsearch en `http://elasticsearch:9200`
 
@@ -146,7 +146,7 @@ Ir a `Analytics → Dashboards → Create dashboard` y agregar:
 
 ##  Escenarios de Evaluación
 
-### Escenario 1 — Operación Normal (3 consumers)
+### Escenario 1 — Operación Normal 
 
 ```bash
 docker compose up --build -d
