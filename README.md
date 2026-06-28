@@ -150,6 +150,7 @@ Ir a `Analytics → Dashboards → Create dashboard` y agregar:
 
 ```bash
 docker compose up --build -d
+docker compose up -d --scale consumer=1
 docker compose logs -f metrics
 # Observar dashboard en Kibana: http://localhost:5601
 ```
