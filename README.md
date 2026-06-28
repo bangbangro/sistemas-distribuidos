@@ -173,7 +173,7 @@ curl -X DELETE http://localhost:9200/system-metrics
 docker compose up -d --scale consumer=3
 # Verificar balanceo en Kafka
 docker compose logs kafka | grep "Stabilized group"
-# Esperar 3-5 minutos → capturar screenshot y comparar
+
 ```
 
 
@@ -189,7 +189,7 @@ docker exec redis_cache redis-cli set generador_activo 0
 # Restaurar
 docker exec redis_cache redis-cli set generador_activo 1
 
-# Observar en Kibana: sistema se recupera, recovery_time aparece en logs
+
 docker compose logs -f metrics
 ```
 
@@ -206,7 +206,6 @@ docker compose logs -f consumer
 # RETRY query_id=... intento=2/3
 # DLQ  query_id=... reintentos=3
 
-# Observar en Kibana: dlq_total aumenta, retry_rate > 0
 # Restaurar
 docker exec redis_cache redis-cli set generador_activo 1
 ```
@@ -217,13 +216,12 @@ docker exec redis_cache redis-cli set generador_activo 1
 # Activar spike (10x más consultas)
 docker exec redis_cache redis-cli set traffic_mode spike
 
-# Observar en Kibana: throughput se dispara, backlog_redis crece
 docker compose logs -f metrics
 
 # Volver a modo normal
 docker exec redis_cache redis-cli set traffic_mode normal
 
-# Observar cómo el backlog se drena gradualmente
+
 ```
 
 ---
