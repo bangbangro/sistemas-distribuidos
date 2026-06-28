@@ -161,6 +161,7 @@ docker compose logs -f metrics
 # Resetear estado
 docker exec redis_cache redis-cli flushall
 curl -X DELETE http://localhost:9200/system-metrics
+docker compose restart metrics
 
 # Escalar a 1 consumer
 docker compose up -d --scale consumer=1
@@ -169,6 +170,7 @@ docker compose up -d --scale consumer=1
 # Resetear estado
 docker exec redis_cache redis-cli flushall
 curl -X DELETE http://localhost:9200/system-metrics
+docker compose restart metrics
 
 # Escalar a 3 consumers
 docker compose up -d --scale consumer=3
